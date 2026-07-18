@@ -16,8 +16,14 @@ if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($passwo
 if (!in_array($role, ['student', 'company'], true)) respond(422, ['message' => 'Invalid account type.']);
 
 try {
-    $statement = db()->prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)');
+    $pdo = db();
+    $statement = $pdo->prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)');
     $statement->execute([$name, $email, password_hash($password, PASSWORD_DEFAULT), $role]);
+    $userId = (int) $pdo->lastInsertId();
+    if ($role === 'company') {
+        $company = $pdo->prepare('INSERT INTO company_profiles (user_id, company_name, contact_name) VALUES (?, ?, ?)');
+        $company->execute([$userId, trim((string) ($data['companyName'] ?? $name)), $name]);
+    }
     respond(201, ['message' => 'Account created.', 'user' => ['name' => $name, 'email' => $email, 'role' => $role]]);
 } catch (PDOException $exception) {
     if ($exception->getCode() === '23000') respond(409, ['message' => 'An account with that email already exists.']);

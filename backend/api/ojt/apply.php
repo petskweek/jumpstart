@@ -31,6 +31,11 @@ try {
     if (!$email) respond(401, ['message' => 'Your account could not be found. Please sign in again.']);
     $resumePath = upload('resume', true);
     $transcriptPath = upload('transcript');
+    $profileStatement = $pdo->prepare('INSERT INTO student_profiles (user_id, phone, school, program, year_level, student_number, skills, preferred_industry, resume_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE phone = VALUES(phone), school = VALUES(school), program = VALUES(program), year_level = VALUES(year_level), student_number = VALUES(student_number), skills = VALUES(skills), preferred_industry = VALUES(preferred_industry), resume_path = VALUES(resume_path)');
+    $profileStatement->execute([$_SESSION['user']['id'], trim($_POST['phone']), trim($_POST['school']), trim($_POST['program']), '4th Year', trim($_POST['studentId']), trim($_POST['skills'] ?? ''), trim($_POST['industry']), $resumePath]);
+    $documentStatement = $pdo->prepare('INSERT INTO documents (user_id, document_type, original_name, storage_path) VALUES (?, ?, ?, ?)');
+    $documentStatement->execute([$_SESSION['user']['id'], 'resume', basename((string) $_FILES['resume']['name']), $resumePath]);
+    if ($transcriptPath) $documentStatement->execute([$_SESSION['user']['id'], 'transcript', basename((string) $_FILES['transcript']['name']), $transcriptPath]);
     $statement = $pdo->prepare('INSERT INTO ojt_applications (user_id, first_name, last_name, email, phone, school, program, year_level, student_id, preferred_industry, required_hours, preferred_start_date, skills, motivation, resume_path, transcript_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
     $statement->execute([$_SESSION['user']['id'], trim($_POST['firstName']), trim($_POST['lastName']), $email, trim($_POST['phone']), trim($_POST['school']), trim($_POST['program']), '4th Year', trim($_POST['studentId']), trim($_POST['industry']), (int) $_POST['hours'], $_POST['startDate'], trim($_POST['skills'] ?? ''), trim($_POST['motivation']), $resumePath, $transcriptPath]);
     respond(201, ['message' => 'OJT application submitted.', 'applicationId' => (int) $pdo->lastInsertId()]);

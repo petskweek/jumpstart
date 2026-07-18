@@ -10,6 +10,7 @@ import ProgressRing from "../components/ProgressRing.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
 import { initialApplications, initialPositions, initialDocuments, dtrLogs } from "../data/mockData.js";
+import { api } from "../lib/api.ts";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 
@@ -33,8 +34,41 @@ export default function StudentDashboard({ notify, user }) {
       .catch(() => setOjtApplication(null));
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([api.getApplications(), api.getPostings()])
+      .then(([applicationData, postingData]) => {
+        setApps(applicationData.applications.map((application) => ({
+          id: application.id,
+          title: application.postingTitle || "OJT Placement Request",
+          company: application.company || "School placement review",
+          location: "—",
+          hours: `${application.requiredHours} hours`,
+          applied: new Date(application.createdAt).toLocaleDateString(),
+          status: application.status[0].toUpperCase() + application.status.slice(1),
+        })));
+        setPositions(postingData.postings.map((posting) => ({
+          id: posting.id,
+          title: posting.title,
+          company: posting.company,
+          desc: posting.description,
+          location: posting.location || "Location to be confirmed",
+          hours: `${posting.requiredHours} hours`,
+          tags: posting.requirements?.split(",").map((item) => item.trim()).filter(Boolean) || [],
+          applied: applicationData.applications.some((application) => application.postingId === posting.id && !["rejected", "withdrawn"].includes(application.status)),
+        })));
+      })
+      .catch((error) => notify(error.message || "Unable to load live OJT data."));
+  }, [user?.id]);
+
   const withdraw = (a) => { setApps(apps.map(x => x.id === a.id ? { ...x, status: "Withdrawn" } : x)); notify(`Withdrew application: ${a.title}`); };
-  const applyNow = (p) => { setPositions(positions.map(x => x.id === p.id ? { ...x, applied: true } : x)); notify(`Applied to ${p.title} at ${p.company}!`); };
+  const applyNow = async (p) => {
+    try {
+      await api.applyToPosting(p.id, `I am interested in the ${p.title} OJT opportunity.`);
+      setPositions(positions.map(x => x.id === p.id ? { ...x, applied: true } : x));
+      notify(`Applied to ${p.title} at ${p.company}!`);
+    } catch (error) { notify(error.message || "Unable to submit application."); }
+  };
   const replaceDoc = (name) => { setDocs(docs.map(d => d.name === name ? { ...d, date: "2026-07-07" } : d)); notify(`${name} replaced`); };
   const uploadDoc = () => { const name = `New_Document_${docs.length + 1}.pdf`; setDocs([...docs, { name, date: "2026-07-07" }]); notify("Document uploaded"); };
 

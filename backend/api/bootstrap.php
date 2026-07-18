@@ -23,6 +23,22 @@ function input(): array {
     return $data;
 }
 
+function requireRole(string ...$roles): array {
+    $user = $_SESSION['user'] ?? null;
+    if (!is_array($user) || !in_array($user['role'] ?? null, $roles, true)) {
+        respond(403, ['message' => 'You do not have permission to perform this action.']);
+    }
+    return $user;
+}
+
+function requireFields(array $data, array $fields): void {
+    foreach ($fields as $field) {
+        if (!isset($data[$field]) || trim((string) $data[$field]) === '') {
+            respond(422, ['message' => "The {$field} field is required."]);
+        }
+    }
+}
+
 function db(): PDO {
     $host = getenv('DB_HOST') ?: '127.0.0.1';
     $name = getenv('DB_NAME') ?: 'jumpstart';

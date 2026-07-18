@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ShieldCheck, Settings, Users2, Clock, CheckCircle2, Building2, UserPlus, Users,
   BarChart3, TrendingUp, FileBarChart2, FileText, Bell, MessageSquare
@@ -9,6 +9,7 @@ import ProgressRing from "../components/ProgressRing.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
 import { initialApprovals, initialManagedStudents } from "../data/mockData.js";
+import { api } from "../lib/api.ts";
 
 export default function AdminDashboard({ notify, user }) {
   const [tab, setTab] = useState("Approvals");
@@ -16,8 +17,20 @@ export default function AdminDashboard({ notify, user }) {
   const [studentsList, setStudentsList] = useState(initialManagedStudents);
   const [modal, setModal] = useState(null);
 
-  const approve = (p) => { setApprovals(approvals.filter(x => x.id !== p.id)); notify(`Approved ${p.name}'s placement`); };
-  const reject = (p) => { setApprovals(approvals.filter(x => x.id !== p.id)); notify(`Rejected ${p.name}'s application`); };
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([api.getApplications(), api.getReports()])
+      .then(([applicationData, reportData]) => {
+        setApprovals(applicationData.applications.filter((application) => application.companyStatus === "accepted" && ["pending", "reviewed"].includes(application.status)).map((application) => ({
+          id: application.id, name: `${application.firstName} ${application.lastName}`, position: application.postingTitle || "OJT Placement", company: application.company || "—", submitted: new Date(application.createdAt).toLocaleDateString(),
+        })));
+        setStudentsList(reportData.ojtProgress.map((progress) => ({ id: progress.placementId, name: progress.student, program: `${progress.approvedHours}/${progress.requiredHours} OJT hours`, status: progress.approvedHours >= progress.requiredHours ? "Placed" : "In Progress", company: progress.company })));
+      })
+      .catch((error) => notify(error.message || "Unable to load admin data."));
+  }, [user?.id]);
+
+  const approve = async (p) => { try { await api.decideApplication(p.id, "approved"); setApprovals(approvals.filter(x => x.id !== p.id)); notify(`Approved ${p.name}'s placement`); } catch (error) { notify(error.message || "Unable to approve placement."); } };
+  const reject = async (p) => { try { await api.decideApplication(p.id, "rejected"); setApprovals(approvals.filter(x => x.id !== p.id)); notify(`Rejected ${p.name}'s application`); } catch (error) { notify(error.message || "Unable to reject application."); } };
   const addStudent = () => {
     const ns = { id: Date.now(), name: "New Student", program: "Undeclared | 1st Year", status: "Searching", company: "-" };
     setStudentsList([ns, ...studentsList]); notify("Student added");

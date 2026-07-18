@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Building2, Briefcase, Users, CheckCircle2, TrendingUp, Eye, Pencil, Trash2,
   Plus, Star, Award, ClipboardCheck, MessageSquare, X
@@ -8,6 +8,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
 import { initialPostings, initialApplicants, ojtStudentsSeed } from "../data/mockData.js";
+import { api } from "../lib/api.ts";
 
 export default function CompanyDashboard({ notify, user }) {
   const [tab, setTab] = useState("Job Postings");
@@ -21,13 +22,39 @@ export default function CompanyDashboard({ notify, user }) {
   const [messages, setMessages] = useState(["Jamie Cruz has completed 240/240 hours with a 4.8 average — ready for sign-off."]);
   const [msgInput, setMsgInput] = useState("");
 
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([api.getCompanyPostings(user.id), api.getApplications()])
+      .then(([postingData, applicationData]) => {
+        setPostings(postingData.postings.map((posting) => ({
+          id: posting.id, title: posting.title, dept: posting.department || "General", status: posting.status[0].toUpperCase() + posting.status.slice(1),
+          applicants: applicationData.applications.filter((application) => application.postingId === posting.id).length,
+          posted: new Date(posting.createdAt).toLocaleDateString(),
+        })));
+        setApplicants(applicationData.applications.map((application) => ({
+          id: application.id, name: `${application.firstName} ${application.lastName}`, for: application.postingTitle || "OJT Placement", school: application.school,
+          program: application.program, gpa: "—", status: application.companyStatus === "accepted" ? "Accepted" : application.status === "rejected" ? "Rejected" : "New",
+        })));
+      })
+      .catch((error) => notify(error.message || "Unable to load company data."));
+  }, [user?.id]);
+
   const deletePosting = (p) => { setPostings(postings.filter(x => x.id !== p.id)); notify(`Deleted posting: ${p.title}`); };
-  const createPosting = () => {
-    const np = { id: Date.now(), title: "New OJT Posting", dept: "General", status: "Active", applicants: 0, posted: "2026-07-07" };
-    setPostings([np, ...postings]); notify("New posting created");
+  const createPosting = async () => {
+    try {
+      const result = await api.createPosting({ title: "New OJT Posting", description: "Add the posting description in the company portal.", requiredHours: 240, department: "General", status: "active" });
+      setPostings([{ id: result.postingId, title: "New OJT Posting", dept: "General", status: "Active", applicants: 0, posted: new Date().toLocaleDateString() }, ...postings]);
+      notify("New posting created");
+    } catch (error) { notify(error.message || "Unable to create posting."); }
   };
-  const acceptApplicant = (a) => { setApplicants(applicants.map(x => x.id === a.id ? { ...x, status: "Accepted" } : x)); notify(`${a.name} accepted`); };
-  const rejectApplicant = (a) => { setApplicants(applicants.filter(x => x.id !== a.id)); notify(`${a.name} rejected`); };
+  const acceptApplicant = async (a) => {
+    try { await api.decideApplication(a.id, "accepted"); setApplicants(applicants.map(x => x.id === a.id ? { ...x, status: "Accepted" } : x)); notify(`${a.name} accepted`); }
+    catch (error) { notify(error.message || "Unable to accept applicant."); }
+  };
+  const rejectApplicant = async (a) => {
+    try { await api.decideApplication(a.id, "rejected"); setApplicants(applicants.map(x => x.id === a.id ? { ...x, status: "Rejected" } : x)); notify(`${a.name} rejected`); }
+    catch (error) { notify(error.message || "Unable to reject applicant."); }
+  };
   const submitEvaluation = () => { notify(`${evalPeriod} evaluation submitted for ${evalStudent}`); setEvalNotes(""); };
   const sendMessage = () => { if (!msgInput.trim()) return; setMessages([...messages, msgInput]); setMsgInput(""); notify("Message sent to school admin"); };
 
