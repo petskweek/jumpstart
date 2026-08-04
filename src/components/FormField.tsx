@@ -1,6 +1,6 @@
 import React from "react";
 
-export default function FormField({ label, placeholder, type = "text", full, ...inputProps }) {
+export default function FormField({ label, placeholder, type = "text", full = false, ...inputProps }) {
   return (
     <div className={full ? "sm:col-span-2" : ""}>
       <label htmlFor={inputProps.id} className="block text-sm font-body font-medium text-slate-700 mb-1">{label}</label>

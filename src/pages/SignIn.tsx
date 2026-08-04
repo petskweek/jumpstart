@@ -23,7 +23,7 @@ export default function SignIn({ setPage, onLogin }) {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch(`${API_URL}/api/auth/login.php`, {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

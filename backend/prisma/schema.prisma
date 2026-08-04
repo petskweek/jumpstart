@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  student
+  company
+  admin
+}
+enum PostingStatus {
+  draft
+  active
+  closed
+}
+enum ApplicationStatus {
+  pending
+  reviewed
+  approved
+  rejected
+  withdrawn
+}
+enum CompanyStatus {
+  pending
+  accepted
+  rejected
+}
+enum PlacementStatus {
+  pending
+  active
+  completed
+  cancelled
+}
+enum RecordStatus {
+  open
+  submitted
+  approved
+  rejected
+}
+enum PeriodType {
+  weekly
+  monthly
+  final
+}
+enum DocumentType {
+  resume
+  transcript
+  recommendation
+  other
+}
+
+model User {
+  id                   Int              @id @default(autoincrement())
+  name                 String           @db.VarChar(100)
+  email                String           @unique @db.VarChar(255)
+  passwordHash         String           @map("password_hash")
+  role                 Role             @default(student)
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+  studentProfile       StudentProfile?
+  companyProfile       CompanyProfile?
+  documents            Document[]
+  postings             JobPosting[]     @relation("CompanyPostings")
+  applications         OjtApplication[] @relation("StudentApplications")
+  reviewedApplications OjtApplication[] @relation("ApplicationReviewer")
+  studentPlacements    Placement[]      @relation("StudentPlacements")
+  companyPlacements    Placement[]      @relation("CompanyPlacements")
+  approvedPlacements   Placement[]      @relation("PlacementApprover")
+  evaluations          Evaluation[]
+
+  @@map("users")
+}
+
+model StudentProfile {
+  userId            Int      @id @map("user_id")
+  phone             String?
+  school            String?
+  program           String?
+  yearLevel         String?  @map("year_level")
+  studentNumber     String?  @map("student_number")
+  skills            String?
+  preferredIndustry String?  @map("preferred_industry")
+  resumePath        String?  @map("resume_path")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("student_profiles")
+}
+
+model CompanyProfile {
+  userId      Int      @id @map("user_id")
+  companyName String   @map("company_name")
+  contactName String?  @map("contact_name")
+  contactPosition String? @map("contact_position")
+  phone       String?
+  address     String?
+  industry    String?
+  description String?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("company_profiles")
+}
+
+model Document {
+  id           Int          @id @default(autoincrement())
+  userId       Int          @map("user_id")
+  documentType DocumentType @default(other) @map("document_type")
+  originalName String       @map("original_name")
+  storagePath  String       @map("storage_path")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
+model JobPosting {
+  id            Int           @id @default(autoincrement())
+  companyId     Int           @map("company_id")
+  title         String
+  department    String?
+  description   String
+  location      String?
+  requiredHours Int           @map("required_hours")
+  requirements  String?
+  status        PostingStatus @default(draft)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  company       User          @relation("CompanyPostings", fields: [companyId], references: [id], onDelete: Cascade)
+  applications  OjtApplication[]
+  placements    Placement[]
+
+  @@map("job_postings")
+}
+
+model OjtApplication {
+  id                Int               @id @default(autoincrement())
+  userId            Int               @map("user_id")
+  jobPostingId      Int?              @map("job_posting_id")
+  firstName         String            @map("first_name")
+  lastName          String            @map("last_name")
+  email             String
+  phone             String
+  school            String
+  program           String
+  yearLevel         String            @map("year_level")
+  studentIdNumber   String            @map("student_id")
+  preferredIndustry String            @map("preferred_industry")
+  requiredHours     Int               @map("required_hours")
+  preferredStartDate DateTime         @db.Date @map("preferred_start_date")
+  skills            String?
+  motivation        String
+  resumePath        String            @map("resume_path")
+  transcriptPath    String?           @map("transcript_path")
+  status            ApplicationStatus @default(pending)
+  companyStatus     CompanyStatus     @default(pending) @map("company_status")
+  reviewedBy        Int?              @map("reviewed_by")
+  reviewedAt        DateTime?         @map("reviewed_at")
+  reviewNotes       String?           @map("review_notes")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  student           User              @relation("StudentApplications", fields: [userId], references: [id], onDelete: Cascade)
+  posting           JobPosting?       @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+  reviewer          User?             @relation("ApplicationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  placement         Placement?
+
+  @@map("ojt_applications")
+}
+
+model Placement {
+  id            Int             @id @default(autoincrement())
+  applicationId Int             @unique @map("application_id")
+  studentId     Int             @map("student_id")
+  companyId     Int             @map("company_id")
+  jobPostingId  Int?            @map("job_posting_id")
+  startDate     DateTime        @db.Date @map("start_date")
+  endDate       DateTime?       @db.Date @map("end_date")
+  requiredHours Int             @map("required_hours")
+  status        PlacementStatus @default(pending)
+  approvedBy    Int?            @map("approved_by")
+  approvedAt    DateTime?       @map("approved_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  application   OjtApplication  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  student       User            @relation("StudentPlacements", fields: [studentId], references: [id], onDelete: Cascade)
+  company       User            @relation("CompanyPlacements", fields: [companyId], references: [id], onDelete: Cascade)
+  posting       JobPosting?     @relation(fields: [jobPostingId], references: [id], onDelete: SetNull)
+  approver      User?           @relation("PlacementApprover", fields: [approvedBy], references: [id], onDelete: SetNull)
+  timeRecords   TimeRecord[]
+  evaluations   Evaluation[]
+
+  @@map("placements")
+}
+
+model TimeRecord {
+  id          Int          @id @default(autoincrement())
+  placementId Int          @map("placement_id")
+  workDate    DateTime     @db.Date @map("work_date")
+  clockIn     DateTime?    @map("clock_in")
+  clockOut    DateTime?    @map("clock_out")
+  hoursWorked Decimal      @default(0) @db.Decimal(5, 2) @map("hours_worked")
+  status      RecordStatus @default(open)
+  notes       String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  placement   Placement    @relation(fields: [placementId], references: [id], onDelete: Cascade)
+
+  @@unique([placementId, workDate])
+  @@map("time_records")
+}
+
+model Evaluation {
+  id            Int        @id @default(autoincrement())
+  placementId   Int        @map("placement_id")
+  evaluatorId   Int        @map("evaluator_id")
+  periodType    PeriodType @map("period_type")
+  periodStart   DateTime   @db.Date @map("period_start")
+  periodEnd     DateTime   @db.Date @map("period_end")
+  workQuality   Int?       @map("work_quality")
+  attendance    Int?
+  communication Int?
+  overallScore  Decimal?   @db.Decimal(3, 2) @map("overall_score")
+  comments      String?
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  placement     Placement  @relation(fields: [placementId], references: [id], onDelete: Cascade)
+  evaluator     User       @relation(fields: [evaluatorId], references: [id], onDelete: Cascade)
+
+  @@unique([placementId, periodType, periodStart, periodEnd])
+  @@map("evaluations")
+}

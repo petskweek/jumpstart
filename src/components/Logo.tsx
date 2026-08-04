@@ -1,7 +1,7 @@
 import React from "react";
 import { GraduationCap } from "lucide-react";
 
-export default function Logo({ light }) {
+export default function Logo({ light = false }) {
   return (
     <div className="flex items-center gap-2">
       <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-md">

@@ -1,3 +1,4 @@
+// @ts-nocheck -- legacy error boundary; component props will be typed incrementally.
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";

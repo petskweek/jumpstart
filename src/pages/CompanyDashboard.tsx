@@ -1,3 +1,4 @@
+// @ts-nocheck -- migrated JSX preserved while dashboard domain types are consolidated.
 import React, { useEffect, useState } from "react";
 import {
   Building2, Briefcase, Users, CheckCircle2, TrendingUp, Eye, Pencil, Trash2,
@@ -7,14 +8,14 @@ import PortalTabs from "../components/PortalTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
-import { initialPostings, initialApplicants, ojtStudentsSeed } from "../data/mockData.js";
+import { initialPostings, ojtStudentsSeed } from "../data/mockData.js";
 import { api } from "../lib/api.ts";
 
 export default function CompanyDashboard({ notify, user }) {
   const [tab, setTab] = useState("Job Postings");
   const [certFor, setCertFor] = useState(null);
   const [postings, setPostings] = useState(initialPostings);
-  const [applicants, setApplicants] = useState(initialApplicants);
+  const [applicants, setApplicants] = useState([]);
   const [modal, setModal] = useState(null);
   const [evalStudent, setEvalStudent] = useState(ojtStudentsSeed[0].name);
   const [evalPeriod, setEvalPeriod] = useState("Weekly");

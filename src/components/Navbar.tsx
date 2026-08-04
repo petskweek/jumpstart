@@ -20,7 +20,7 @@ export default function Navbar({ page, setPage, user, onLogout }) {
   const links = [
     { id: "home", label: "Home" },
     { id: "about", label: "About OJT" },
-    { id: "request", label: "Request OJT" },
+    { id: "request", label: user?.role === "company" ? "OJT Applications" : "Request OJT" },
   ];
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">

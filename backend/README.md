@@ -1,32 +1,20 @@
-# XAMPP setup
+# JumpStart API
 
-1. Start Apache and MySQL in the XAMPP Control Panel.
-2. Open `http://localhost/phpmyadmin`, create/import the database by importing `database.sql`.
-3. Copy the **contents** of this `backend` folder to `C:\xampp\htdocs\jumpstart-api`. The register endpoint will then be at `http://localhost/jumpstart-api/api/auth/register.php`.
-4. In the frontend project root, create `.env` with:
+The active API is an Express/TypeScript application in `src/server.ts`. Prisma's PostgreSQL data model is in `prisma/schema.prisma`.
 
-   ```env
-   VITE_API_URL=http://localhost/jumpstart-api
-   ```
+Authentication uses signed JWTs. The login route returns a token and also sets an HTTP-only cookie. Protected routes accept either that cookie or `Authorization: Bearer <token>`.
 
-5. Restart Vite after changing `.env`.
-
-The PHP API uses XAMPP's default MySQL settings: host `127.0.0.1`, database `jumpstart`, user `root`, blank password. To use different credentials, set `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD` in Apache's environment or change those defaults in `api/bootstrap.php`.
-
-Only Student and Company roles can be registered publicly. Create administrator accounts directly in the database.
-
-## API workflow
-
-The database implements the activity diagram end-to-end: student profiles/documents and OJT applications; company job postings, applicant decisions, intern monitoring and evaluations; and school-admin placement approval and reports.
+## Main routes
 
 | Route | Method | Purpose |
 | --- | --- | --- |
-| `api/postings/index.php` | GET / POST | Browse active postings or create a company posting |
-| `api/postings/apply.php` | POST | Student applies to an active posting using their saved profile |
-| `api/applications/index.php` | GET | Get applications appropriate to the signed-in role |
-| `api/applications/decision.php` | POST | Company accepts/rejects; admin approves/rejects and creates placement |
-| `api/internships/time-records.php` | GET / POST | Read DTR entries; student clock-in or clock-out |
-| `api/internships/evaluations.php` | GET / POST | Read evaluations; company creates weekly/monthly/final evaluations |
-| `api/admin/reports.php` | GET | Admin system summary and active OJT progress |
+| `/api/auth/register` | POST | Create a Student or Company account |
+| `/api/auth/login` | POST | Authenticate and issue a JWT |
+| `/api/postings` | GET / POST | Browse or create OJT postings |
+| `/api/postings/apply` | POST | Apply to an active posting |
+| `/api/ojt/apply` | POST | Submit multipart OJT application documents |
+| `/api/applications` | GET | List role-appropriate applications |
+| `/api/applications/decision` | POST | Company/admin application decision |
+| `/api/admin/reports` | GET | Admin summary and OJT progress |
 
-All non-public endpoints use the existing PHP session cookie. Send requests with `credentials: "include"` from the frontend.
+The `.php` route aliases are temporarily supported by Express for compatibility, but new frontend code uses the extensionless routes.

@@ -1,3 +1,4 @@
+// @ts-nocheck -- migrated JSX preserved while dashboard domain types are consolidated.
 import React, { useEffect, useState } from "react";
 import {
   ShieldCheck, Settings, Users2, Clock, CheckCircle2, Building2, UserPlus, Users,
@@ -8,12 +9,12 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import ProgressRing from "../components/ProgressRing.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
-import { initialApprovals, initialManagedStudents } from "../data/mockData.js";
+import { initialManagedStudents } from "../data/mockData.js";
 import { api } from "../lib/api.ts";
 
 export default function AdminDashboard({ notify, user }) {
   const [tab, setTab] = useState("Approvals");
-  const [approvals, setApprovals] = useState(initialApprovals);
+  const [approvals, setApprovals] = useState([]);
   const [studentsList, setStudentsList] = useState(initialManagedStudents);
   const [modal, setModal] = useState(null);
 
