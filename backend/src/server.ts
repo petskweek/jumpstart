@@ -76,11 +76,47 @@ app.get(["/api/postings", "/api/postings/index.php"], asyncRoute(async (req, res
   res.json({ postings: postings.map(p => ({ id: p.id, title: p.title, department: p.department, description: p.description, location: p.location, requiredHours: p.requiredHours, requirements: p.requirements, status: p.status, createdAt: p.createdAt, company: p.company.companyProfile?.companyName ?? p.company.name })) });
 }));
 
+app.get("/api/company/postings", ...allow("company"), asyncRoute(async (req, res) => {
+  const postings = await prisma.jobPosting.findMany({ where: { companyId: req.user!.id }, include: { company: { include: { companyProfile: true } } }, orderBy: { createdAt: "desc" } });
+  res.json({ postings: postings.map(p => ({ id: p.id, title: p.title, department: p.department, description: p.description, location: p.location, requiredHours: p.requiredHours, requirements: p.requirements, status: p.status, createdAt: p.createdAt, company: p.company.companyProfile?.companyName ?? p.company.name })) });
+}));
+
 app.post(["/api/postings", "/api/postings/index.php"], ...allow("company"), asyncRoute(async (req, res) => {
   const requiredHours = Number(req.body.requiredHours);
   if (!text(req.body.title) || !text(req.body.description) || !Number.isInteger(requiredHours) || requiredHours < 1) return res.status(422).json({ message: "Title, description, and positive requiredHours are required." });
   const posting = await prisma.jobPosting.create({ data: { companyId: req.user!.id, title: text(req.body.title), description: text(req.body.description), department: text(req.body.department) || null, location: text(req.body.location) || null, requirements: text(req.body.requirements) || null, requiredHours, status: ["draft", "active"].includes(req.body.status) ? req.body.status : "active" } });
   res.status(201).json({ message: "Job posting created.", postingId: posting.id });
+}));
+
+app.patch("/api/postings/:id", ...allow("company"), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id), action = text(req.body.action);
+  const posting = await prisma.jobPosting.findFirst({ where: { id, companyId: req.user!.id } });
+  if (!posting) return res.status(404).json({ message: "Posting not found." });
+  if (action === "close") {
+    if (posting.status === "closed") return res.status(422).json({ message: "Posting is already closed." });
+    await prisma.jobPosting.update({ where: { id }, data: { status: "closed" } });
+    return res.json({ message: "Posting moved to closed postings." });
+  }
+  if (action === "restore") {
+    if (posting.status !== "closed") return res.status(422).json({ message: "Only a closed posting can be restored." });
+    await prisma.jobPosting.update({ where: { id }, data: { status: "active" } });
+    return res.json({ message: "Posting restored." });
+  }
+  if (action === "publish") {
+    if (posting.status !== "draft") return res.status(422).json({ message: "Only a draft posting can be published." });
+    await prisma.jobPosting.update({ where: { id }, data: { status: "active" } });
+    return res.json({ message: "Posting published." });
+  }
+  return res.status(422).json({ message: "Choose close, restore, or publish." });
+}));
+
+app.delete("/api/postings/:id", ...allow("company"), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id);
+  const posting = await prisma.jobPosting.findFirst({ where: { id, companyId: req.user!.id } });
+  if (!posting) return res.status(404).json({ message: "Posting not found." });
+  if (posting.status !== "closed") return res.status(422).json({ message: "Only a closed posting can be permanently deleted." });
+  await prisma.jobPosting.delete({ where: { id } });
+  res.json({ message: "Posting permanently deleted." });
 }));
 
 app.post(["/api/postings/apply", "/api/postings/apply.php"], ...allow("student"), asyncRoute(async (req, res) => {
@@ -89,10 +125,14 @@ app.post(["/api/postings/apply", "/api/postings/apply.php"], ...allow("student")
   const user = await prisma.user.findUnique({ where: { id: req.user!.id }, include: { studentProfile: true } });
   const p = user?.studentProfile;
   if (!user || !p?.phone || !p.school || !p.program || !p.studentNumber || !p.resumePath) return res.status(422).json({ message: "Complete your student profile and upload a resume before applying to a posting." });
+  const savedForm = await prisma.ojtApplication.findFirst({ where: { userId: user.id, jobPostingId: null, lastName: { not: "" } }, orderBy: { createdAt: "desc" } });
   const existing = await prisma.ojtApplication.findFirst({ where: { userId: user.id, jobPostingId: posting.id, status: { notIn: ["withdrawn", "rejected"] } } });
-  if (existing) return res.status(409).json({ message: "You already have an active application for this posting." });
+  if (existing) {
+    if (!existing.lastName.trim() && savedForm?.lastName.trim()) await prisma.ojtApplication.update({ where: { id: existing.id }, data: { firstName: savedForm.firstName, lastName: savedForm.lastName } });
+    return res.json({ message: "Your application has already been sent to the company.", applicationId: existing.id, alreadyApplied: true });
+  }
   const [firstName, ...last] = user.name.split(/\s+/);
-  const application = await prisma.ojtApplication.create({ data: { userId: user.id, jobPostingId: posting.id, firstName, lastName: last.join(" "), email: user.email, phone: p.phone, school: p.school, program: p.program, yearLevel: p.yearLevel ?? "Not specified", studentIdNumber: p.studentNumber, preferredIndustry: p.preferredIndustry ?? "Not specified", requiredHours: posting.requiredHours, preferredStartDate: new Date(), skills: p.skills, motivation: text(req.body.motivation), resumePath: p.resumePath } });
+  const application = await prisma.ojtApplication.create({ data: { userId: user.id, jobPostingId: posting.id, firstName: savedForm?.firstName || firstName, lastName: savedForm?.lastName || last.join(" "), email: user.email, phone: savedForm?.phone || p.phone, school: savedForm?.school || p.school, program: savedForm?.program || p.program, yearLevel: savedForm?.yearLevel || p.yearLevel || "Not specified", studentIdNumber: savedForm?.studentIdNumber || p.studentNumber, preferredIndustry: savedForm?.preferredIndustry || p.preferredIndustry || "Not specified", requiredHours: posting.requiredHours, preferredStartDate: savedForm?.preferredStartDate || new Date(), skills: savedForm?.skills || p.skills, motivation: text(req.body.motivation) || savedForm?.motivation || "Interested in this OJT opportunity.", resumePath: savedForm?.resumePath || p.resumePath, transcriptPath: savedForm?.transcriptPath || null } });
   res.status(201).json({ message: "Application sent to the company.", applicationId: application.id });
 }));
 
@@ -137,7 +177,21 @@ app.post(["/api/ojt/apply", "/api/ojt/apply.php"], ...allow("student"), upload.f
 app.get(["/api/applications", "/api/applications/index.php"], ...allow("student", "company", "admin"), asyncRoute(async (req, res) => {
   const where = req.user!.role === "student" ? { userId: req.user!.id } : req.user!.role === "company" ? { posting: { companyId: req.user!.id } } : {};
   const rows = await prisma.ojtApplication.findMany({ where, include: { posting: { include: { company: { include: { companyProfile: true } } } } }, orderBy: { createdAt: "desc" } });
-  res.json({ applications: rows.map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, email: a.email, phone: a.phone, school: a.school, program: a.program, yearLevel: a.yearLevel, studentId: a.studentIdNumber, preferredIndustry: a.preferredIndustry, requiredHours: a.requiredHours, preferredStartDate: a.preferredStartDate, skills: a.skills, motivation: a.motivation, status: a.status, companyStatus: a.companyStatus, createdAt: a.createdAt, postingId: a.posting?.id ?? null, postingTitle: a.posting?.title ?? null, company: a.posting?.company.companyProfile?.companyName ?? null })) });
+  res.json({ applications: rows.map(a => ({ id: a.id, firstName: a.firstName, lastName: a.lastName, email: a.email, phone: a.phone, school: a.school, program: a.program, yearLevel: a.yearLevel, studentId: a.studentIdNumber, preferredIndustry: a.preferredIndustry, requiredHours: a.requiredHours, preferredStartDate: a.preferredStartDate, skills: a.skills, motivation: a.motivation, status: a.status, companyStatus: a.companyStatus, createdAt: a.createdAt, postingId: a.posting?.id ?? null, postingTitle: a.posting?.title ?? null, company: a.posting?.company.companyProfile?.companyName ?? null, hasResume: Boolean(a.resumePath), hasTranscript: Boolean(a.transcriptPath) })) });
+}));
+
+app.get("/api/applications/:id/documents/:type", ...allow("student", "company", "admin"), asyncRoute(async (req, res) => {
+  const id = Number(req.params.id), type = String(req.params.type);
+  if (!Number.isInteger(id) || !["resume", "transcript"].includes(type)) return res.status(400).json({ message: "Invalid document request." });
+  const application = await prisma.ojtApplication.findUnique({ where: { id }, include: { posting: true } });
+  if (!application) return res.status(404).json({ message: "Application not found." });
+  const canView = req.user!.role === "admin" || (req.user!.role === "student" && application.userId === req.user!.id) || (req.user!.role === "company" && application.posting?.companyId === req.user!.id);
+  if (!canView) return res.status(403).json({ message: "You do not have permission to view this document." });
+  const storagePath = type === "resume" ? application.resumePath : application.transcriptPath;
+  if (!storagePath) return res.status(404).json({ message: `${type === "resume" ? "Resume" : "Transcript"} not provided.` });
+  const filePath = path.join(uploadsDir, path.basename(storagePath));
+  if (!fs.existsSync(filePath)) return res.status(404).json({ message: "The uploaded file could not be found." });
+  res.sendFile(filePath);
 }));
 
 app.patch("/api/applications/:id", ...allow("student"), asyncRoute(async (req, res) => {

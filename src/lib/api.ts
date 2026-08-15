@@ -28,6 +28,8 @@ export interface Application {
   preferredStartDate: string;
   skills: string | null;
   motivation: string;
+  hasResume: boolean;
+  hasTranscript: boolean;
   status: "pending" | "reviewed" | "approved" | "rejected" | "withdrawn";
   companyStatus: "pending" | "accepted" | "rejected";
   createdAt: string;
@@ -75,8 +77,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   getPostings: () => request<{ postings: Posting[] }>("/api/postings"),
-  getCompanyPostings: (companyId: number) => request<{ postings: Posting[] }>(`/api/postings?companyId=${companyId}`),
+  getCompanyPostings: (_companyId: number) => request<{ postings: Posting[] }>("/api/company/postings"),
   createPosting: (posting: Pick<Posting, "title" | "description" | "requiredHours"> & Partial<Pick<Posting, "department" | "location" | "requirements" | "status">>) => request<{ postingId: number; message: string }>("/api/postings", { method: "POST", body: JSON.stringify(posting) }),
+  updatePostingState: (postingId: number, action: "close" | "restore" | "publish") => request<{ message: string }>(`/api/postings/${postingId}`, { method: "PATCH", body: JSON.stringify({ action }) }),
+  permanentlyDeletePosting: (postingId: number) => request<{ message: string }>(`/api/postings/${postingId}`, { method: "DELETE" }),
   applyToPosting: (jobPostingId: number, motivation: string) => request<{ applicationId: number; message: string }>("/api/postings/apply", { method: "POST", body: JSON.stringify({ jobPostingId, motivation }) }),
   getApplications: () => request<{ applications: Application[] }>("/api/applications"),
   getMyDocuments: () => request<{ documents: SavedDocument[] }>("/api/documents"),

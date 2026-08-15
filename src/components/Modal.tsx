@@ -1,10 +1,10 @@
 import React from "react";
 import { X } from "lucide-react";
 
-export function Modal({ title, onClose, children, accent = "text-slate-900" }) {
+export function Modal({ title, onClose, children, accent = "text-slate-900", wide = false }) {
   return (
     <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-50 p-5" onClick={onClose}>
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 relative max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className={`bg-white rounded-2xl w-full p-6 relative max-h-[85vh] overflow-y-auto ${wide ? "max-w-3xl" : "max-w-md"}`} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
         <h3 className={`font-display font-bold text-lg mb-4 ${accent}`}>{title}</h3>
         {children}

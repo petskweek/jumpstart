@@ -69,6 +69,7 @@ export default function App() {
     const storage = rememberMe ? localStorage : sessionStorage;
     storage.setItem("jumpstart_user", JSON.stringify(user));
     setCurrentUser(user);
+    setPage(user.role === "student" ? "request" : portalPageByRole[user.role] || "home");
   };
 
   const handleLogout = () => {

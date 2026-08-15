@@ -48,7 +48,6 @@ export default function SignIn({ setPage, onLogin }) {
       const returnedRole = (data.user?.role || data.role || role).toLowerCase();
       if (!roleMap[returnedRole]) throw new Error("This account does not have a recognized portal role.");
       onLogin(data.user, rememberMe);
-      setPage(returnedRole === "student" ? "request" : roleMap[returnedRole]);
     } catch (requestError) {
       setError(requestError.message || "Something went wrong. Please try again.");
     } finally {

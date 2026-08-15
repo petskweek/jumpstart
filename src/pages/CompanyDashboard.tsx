@@ -8,13 +8,15 @@ import PortalTabs from "../components/PortalTabs.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import { Modal, DetailRow } from "../components/Modal.jsx";
 import FormField from "../components/FormField.jsx";
-import { initialPostings, ojtStudentsSeed } from "../data/mockData.js";
+import { ojtStudentsSeed } from "../data/mockData.js";
 import { api } from "../lib/api.ts";
+
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 export default function CompanyDashboard({ notify, user }) {
   const [tab, setTab] = useState("Job Postings");
   const [certFor, setCertFor] = useState(null);
-  const [postings, setPostings] = useState(initialPostings);
+  const [postings, setPostings] = useState([]);
   const [applicants, setApplicants] = useState([]);
   const [modal, setModal] = useState(null);
   const [evalStudent, setEvalStudent] = useState(ojtStudentsSeed[0].name);
@@ -22,11 +24,19 @@ export default function CompanyDashboard({ notify, user }) {
   const [evalNotes, setEvalNotes] = useState("");
   const [messages, setMessages] = useState(["Jamie Cruz has completed 240/240 hours with a 4.8 average — ready for sign-off."]);
   const [msgInput, setMsgInput] = useState("");
+  const [postingForm, setPostingForm] = useState({
+    title: "", department: "", location: "", requiredHours: 240,
+    description: "", requirements: "", status: "active",
+  });
+  const [isCreatingPosting, setIsCreatingPosting] = useState(false);
+  const [postingError, setPostingError] = useState("");
 
   useEffect(() => {
     if (!user?.id) return;
-    Promise.all([api.getCompanyPostings(user.id), api.getApplications()])
+    let active = true;
+    const loadCompanyData = () => Promise.all([api.getCompanyPostings(user.id), api.getApplications()])
       .then(([postingData, applicationData]) => {
+        if (!active) return;
         setPostings(postingData.postings.map((posting) => ({
           id: posting.id, title: posting.title, dept: posting.department || "General", status: posting.status[0].toUpperCase() + posting.status.slice(1),
           applicants: applicationData.applications.filter((application) => application.postingId === posting.id).length,
@@ -34,19 +44,66 @@ export default function CompanyDashboard({ notify, user }) {
         })));
         setApplicants(applicationData.applications.map((application) => ({
           id: application.id, name: `${application.firstName} ${application.lastName}`, for: application.postingTitle || "OJT Placement", school: application.school,
+          firstName: application.firstName, lastName: application.lastName, email: application.email, phone: application.phone,
+          yearLevel: application.yearLevel, studentId: application.studentId, preferredIndustry: application.preferredIndustry,
+          requiredHours: application.requiredHours, preferredStartDate: application.preferredStartDate, skills: application.skills,
+          motivation: application.motivation, submitted: application.createdAt, hasResume: application.hasResume, hasTranscript: application.hasTranscript,
           program: application.program, gpa: "—", status: application.companyStatus === "accepted" ? "Accepted" : application.status === "rejected" ? "Rejected" : "New",
         })));
       })
       .catch((error) => notify(error.message || "Unable to load company data."));
+    loadCompanyData();
+    const refreshTimer = window.setInterval(loadCompanyData, 10000);
+    const refreshOnFocus = () => loadCompanyData();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => { active = false; window.clearInterval(refreshTimer); window.removeEventListener("focus", refreshOnFocus); };
   }, [user?.id]);
 
-  const deletePosting = (p) => { setPostings(postings.filter(x => x.id !== p.id)); notify(`Deleted posting: ${p.title}`); };
-  const createPosting = async () => {
+  const deletePosting = async (p) => {
     try {
-      const result = await api.createPosting({ title: "New OJT Posting", description: "Add the posting description in the company portal.", requiredHours: 240, department: "General", status: "active" });
-      setPostings([{ id: result.postingId, title: "New OJT Posting", dept: "General", status: "Active", applicants: 0, posted: new Date().toLocaleDateString() }, ...postings]);
-      notify("New posting created");
-    } catch (error) { notify(error.message || "Unable to create posting."); }
+      await api.updatePostingState(p.id, "close");
+      setPostings(current => current.map(x => x.id === p.id ? { ...x, status: "Closed" } : x));
+      notify(`Moved posting to closed: ${p.title}`);
+    } catch (error) { notify(error.message || "Unable to close posting."); }
+  };
+  const restorePosting = async (p) => {
+    try {
+      await api.updatePostingState(p.id, "restore");
+      setPostings(current => current.map(x => x.id === p.id ? { ...x, status: "Active" } : x));
+      notify(`Restored posting: ${p.title}`);
+    } catch (error) { notify(error.message || "Unable to restore posting."); }
+  };
+  const publishPosting = async (p) => {
+    try {
+      await api.updatePostingState(p.id, "publish");
+      setPostings(current => current.map(x => x.id === p.id ? { ...x, status: "Active" } : x));
+      notify(`Published posting: ${p.title}`);
+    } catch (error) { notify(error.message || "Unable to publish posting."); }
+  };
+  const permanentlyDeletePosting = async (p) => {
+    if (!window.confirm(`Permanently delete "${p.title}" from the database? This cannot be undone.`)) return;
+    try {
+      await api.permanentlyDeletePosting(p.id);
+      setPostings(current => current.filter(x => x.id !== p.id));
+      notify(`Permanently deleted posting: ${p.title}`);
+    } catch (error) { notify(error.message || "Unable to permanently delete posting."); }
+  };
+  const openCreatePosting = () => {
+    setPostingForm({ title: "", department: "", location: "", requiredHours: 240, description: "", requirements: "", status: "active" });
+    setPostingError("");
+    setModal({ title: "Create New Posting", body: "createPosting" });
+  };
+  const createPosting = async (event) => {
+    event.preventDefault();
+    setPostingError("");
+    setIsCreatingPosting(true);
+    try {
+      const result = await api.createPosting({ ...postingForm, requiredHours: Number(postingForm.requiredHours) });
+      setPostings([{ id: result.postingId, title: postingForm.title, dept: postingForm.department || "General", status: postingForm.status[0].toUpperCase() + postingForm.status.slice(1), applicants: 0, posted: new Date().toLocaleDateString() }, ...postings]);
+      setModal(null);
+      notify("Job posting published successfully");
+    } catch (error) { setPostingError(error.message || "Unable to create posting."); }
+    finally { setIsCreatingPosting(false); }
   };
   const acceptApplicant = async (a) => {
     try { await api.decideApplication(a.id, "accepted"); setApplicants(applicants.map(x => x.id === a.id ? { ...x, status: "Accepted" } : x)); notify(`${a.name} accepted`); }
@@ -105,7 +162,7 @@ export default function CompanyDashboard({ notify, user }) {
           <div>
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-display font-bold text-slate-900">Your Job Postings</h3>
-              <button onClick={createPosting} className="bg-cyan-600 text-white text-xs font-body font-semibold px-4 py-2 rounded-lg flex items-center gap-1 hover:bg-cyan-700"><Plus className="w-3.5 h-3.5" />Create New Posting</button>
+              <button onClick={openCreatePosting} className="bg-cyan-600 text-white text-xs font-body font-semibold px-4 py-2 rounded-lg flex items-center gap-1 hover:bg-cyan-700"><Plus className="w-3.5 h-3.5" />Create New Posting</button>
             </div>
             <div className="space-y-4">
               {postings.map((j) => (
@@ -124,7 +181,10 @@ export default function CompanyDashboard({ notify, user }) {
                   <div className="flex gap-3 mt-3">
                     <button onClick={() => setModal({ title: j.title, body: "posting", data: j })} className="text-xs font-body font-semibold border border-slate-300 rounded-lg px-3 py-1.5 flex items-center gap-1 hover:bg-slate-50"><Eye className="w-3.5 h-3.5" />View</button>
                     <button onClick={() => setModal({ title: `Edit: ${j.title}`, body: "editPosting", data: j })} className="text-xs font-body font-semibold border border-slate-300 rounded-lg px-3 py-1.5 flex items-center gap-1 hover:bg-slate-50"><Pencil className="w-3.5 h-3.5" />Edit</button>
-                    <button onClick={() => deletePosting(j)} className="text-xs font-body font-semibold text-rose-500 border border-rose-200 rounded-lg px-3 py-1.5 flex items-center gap-1 hover:bg-rose-50"><Trash2 className="w-3.5 h-3.5" />Delete</button>
+                    {j.status === "Draft" && <button onClick={() => publishPosting(j)} className="text-xs font-body font-semibold text-white bg-emerald-600 rounded-lg px-3 py-1.5 hover:bg-emerald-700">Publish Now</button>}
+                    {j.status !== "Closed" && <button onClick={() => deletePosting(j)} className="text-xs font-body font-semibold text-rose-500 border border-rose-200 rounded-lg px-3 py-1.5 flex items-center gap-1 hover:bg-rose-50"><Trash2 className="w-3.5 h-3.5" />Delete</button>}
+                    {j.status === "Closed" && <button onClick={() => restorePosting(j)} className="text-xs font-body font-semibold text-emerald-600 border border-emerald-200 rounded-lg px-3 py-1.5 hover:bg-emerald-50">Restore</button>}
+                    {j.status === "Closed" && <button onClick={() => permanentlyDeletePosting(j)} className="text-xs font-body font-semibold text-white bg-rose-600 rounded-lg px-3 py-1.5 hover:bg-rose-700">Delete Permanently</button>}
                   </div>
                 </div>
               ))}
@@ -253,7 +313,31 @@ export default function CompanyDashboard({ notify, user }) {
       )}
 
       {modal && (
-        <Modal title={modal.title} onClose={() => setModal(null)} accent="text-cyan-600">
+        <Modal title={modal.title} onClose={() => setModal(null)} accent="text-cyan-600" wide={modal.body === "applicant"}>
+          {modal.body === "createPosting" && (
+            <form onSubmit={createPosting} className="space-y-4">
+              <p className="font-body text-xs text-slate-500 -mt-2">Describe the OJT role and the kind of student your company is looking for.</p>
+              <FormField id="posting-title" label="Position / Role" placeholder="e.g. Software Development Intern" value={postingForm.title} onChange={(e) => setPostingForm({ ...postingForm, title: e.target.value })} required />
+              <div className="grid sm:grid-cols-2 gap-3">
+                <FormField id="posting-department" label="Department" placeholder="e.g. Engineering" value={postingForm.department} onChange={(e) => setPostingForm({ ...postingForm, department: e.target.value })} />
+                <FormField id="posting-location" label="Work Location" placeholder="e.g. Manila / Hybrid" value={postingForm.location} onChange={(e) => setPostingForm({ ...postingForm, location: e.target.value })} />
+              </div>
+              <FormField id="posting-hours" label="Required OJT Hours" type="number" min="1" value={postingForm.requiredHours} onChange={(e) => setPostingForm({ ...postingForm, requiredHours: e.target.value })} required />
+              <FormField id="posting-description" label="Job Description" type="textarea" placeholder="Describe the responsibilities, projects, and learning opportunities..." value={postingForm.description} onChange={(e) => setPostingForm({ ...postingForm, description: e.target.value })} required />
+              <FormField id="posting-requirements" label="Student Qualifications" type="textarea" placeholder="e.g. Course, year level, technical skills, communication skills..." value={postingForm.requirements} onChange={(e) => setPostingForm({ ...postingForm, requirements: e.target.value })} required />
+              <div>
+                <label htmlFor="posting-status" className="block text-sm font-body font-medium text-slate-700 mb-1">Posting Status</label>
+                <select id="posting-status" value={postingForm.status} onChange={(e) => setPostingForm({ ...postingForm, status: e.target.value })} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm font-body focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                  <option value="active">Publish now</option>
+                  <option value="draft">Save as draft</option>
+                </select>
+              </div>
+              {postingError && <p role="alert" className="text-xs font-body text-red-600">{postingError}</p>}
+              <button type="submit" disabled={isCreatingPosting} className="w-full bg-gradient-to-r from-cyan-600 to-blue-500 text-white font-body font-semibold text-sm py-2.5 rounded-lg hover:opacity-90 disabled:opacity-60">
+                {isCreatingPosting ? "Creating posting..." : postingForm.status === "draft" ? "Save Draft" : "Publish Posting"}
+              </button>
+            </form>
+          )}
           {modal.body === "posting" && (
             <>
               <DetailRow label="Department" value={modal.data.dept} />
@@ -270,13 +354,20 @@ export default function CompanyDashboard({ notify, user }) {
             </div>
           )}
           {modal.body === "applicant" && (
-            <>
-              <DetailRow label="Applied For" value={modal.data.for} />
-              <DetailRow label="School" value={modal.data.school} />
-              <DetailRow label="Program" value={modal.data.program} />
-              <DetailRow label="GPA" value={modal.data.gpa} />
-              <DetailRow label="Status" value={modal.data.status} />
-            </>
+            <div className="space-y-5">
+              <ApplicantSection title="Application" fields={[["Applied For", modal.data.for], ["Status", modal.data.status], ["Submitted", new Date(modal.data.submitted).toLocaleDateString()]]} />
+              <ApplicantSection title="Personal Information" fields={[["First Name", modal.data.firstName], ["Last Name", modal.data.lastName], ["Email", modal.data.email], ["Phone Number", modal.data.phone]]} />
+              <ApplicantSection title="Academic Information" fields={[["School / University", modal.data.school], ["Program / Course", modal.data.program], ["Year Level", modal.data.yearLevel], ["Student ID", modal.data.studentId]]} />
+              <ApplicantSection title="OJT Preferences" fields={[["Preferred Industry", modal.data.preferredIndustry], ["Required Duration", `${modal.data.requiredHours} hours`], ["Preferred Start Date", new Date(modal.data.preferredStartDate).toLocaleDateString()]]} />
+              <ApplicantSection title="Skills and Motivation" fields={[["Skills & Qualifications", modal.data.skills || "Not provided"], ["Why this OJT?", modal.data.motivation]]} wide />
+              <div>
+                <h4 className="font-display font-semibold text-sm text-slate-900 mb-3 pb-2 border-b border-slate-200">Submitted Documents</h4>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {modal.data.hasResume ? <a href={`${API_URL}/api/applications/${modal.data.id}/documents/resume`} target="_blank" rel="noreferrer" className="text-center bg-cyan-600 text-white font-body font-semibold text-sm py-2.5 rounded-lg hover:bg-cyan-700">View Resume</a> : <span className="text-center bg-slate-100 text-slate-400 text-sm py-2.5 rounded-lg">No Resume</span>}
+                  {modal.data.hasTranscript ? <a href={`${API_URL}/api/applications/${modal.data.id}/documents/transcript`} target="_blank" rel="noreferrer" className="text-center border border-cyan-300 text-cyan-700 font-body font-semibold text-sm py-2.5 rounded-lg hover:bg-cyan-50">View Transcript</a> : <span className="text-center bg-slate-100 text-slate-400 text-sm py-2.5 rounded-lg">No Transcript</span>}
+                </div>
+              </div>
+            </div>
           )}
           {modal.body === "editProfile" && (
             <div className="space-y-3">
@@ -289,4 +380,8 @@ export default function CompanyDashboard({ notify, user }) {
       )}
     </section>
   );
+}
+
+function ApplicantSection({ title, fields, wide = false }) {
+  return <section><h4 className="font-display font-semibold text-sm text-slate-900 mb-3 pb-2 border-b border-slate-200">{title}</h4><div className={wide ? "grid gap-3" : "grid sm:grid-cols-2 gap-3"}>{fields.map(([label, value]) => <div key={label} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="text-sm text-slate-800 mt-1 whitespace-pre-wrap break-words">{value || "—"}</p></div>)}</div></section>;
 }
